@@ -75,7 +75,7 @@ def rssfmt (results):
   for game in results:
     xml += f'''
     <item>
-    <title>{game['away']} vs. {game['home']} [ {str(time.ctime(game['start']))} EST]</title>
+    <title>{game['away']} vs. {game['home']} [ {time.strftime("%I:%M %p %Z", time.localtime(game['start']))}]</title>
     <description>{game['status']} | {game['clock']} {game['clock-section']}
     {game['away']} [ {game['away-score']} ] - {game['home']} [ {game['home-score']} ]
     </description>
@@ -126,7 +126,7 @@ def lambda_handler(event, context):
 
 if __name__ == "__main__":
   testevent = {
-    "queryStringParameters" : {"date"  : "20180321",
+    "queryStringParameters" : {"date"  : "20180403",
                                "team"  : "Giants",
                                "sport" : "MLB"
      }
