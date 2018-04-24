@@ -87,9 +87,7 @@ def rssfmt (results):
   '''
   return xml
 
-
-def lambda_handler(event, context):
-  print("DEBUG: Received event: " + json.dumps(event, indent=2))
+def validateinput(event):
   try:
     gamedate = int(event['queryStringParameters']['date'])
     print("DEBUG: Looking for games on " + str(gamedate))
@@ -109,7 +107,17 @@ def lambda_handler(event, context):
     else:
       sport = "MLB"  
   except:
-    sport = "MLB"    
+    sport = "MLB"
+  return (sport, gamedate, team)  
+
+def lambda_handler(event, context):
+  print("DEBUG: Received event: " + json.dumps(event, indent=2))
+  try:
+    (sport, gamedate, team) = validateinput(event)
+  except Exception as e:
+    print("ERROR: " + str(e))
+    api_proxy_response = { "statusCode": 400 }
+    return api_proxy_response 
   try:
     output = rssfmt(today(sport, gamedate, team))
     api_proxy_response = { "statusCode": 200,
@@ -126,7 +134,7 @@ def lambda_handler(event, context):
 
 if __name__ == "__main__":
   testevent = {
-    "queryStringParameters" : {"date"  : "20180403",
+    "queryStringParameters" : {"date"  : "20180424",
                                "team"  : "Giants",
                                "sport" : "MLB"
      }
