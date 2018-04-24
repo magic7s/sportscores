@@ -4,14 +4,13 @@ import time
 from urllib.request import urlopen
 import json
 import os
-#import elementtree.ElementTree as ET
 import xml.etree.ElementTree as ET
+import pytz
 
 # e.g. http://scores.nbcsports.msnbc.com/ticker/data/gamesMSNBC.js.asp?jsonp=true&sport=MLB&period=20120929
-url = 'http://scores.nbcsports.msnbc.com/ticker/data/gamesMSNBC.js.asp?jsonp=true&sport=%s&period=%d'
+url = 'http://scores.nbcsports.msnbc.com/ticker/data/gamesMSNBC.js.asp?jsonp=true&sport=%s&period=%s'
 
-def today(league, gamedate, team):
-  yyyymmdd = gamedate
+def today(league, yyyymmdd, team):
   games = []
   
   try:
@@ -28,9 +27,9 @@ def today(league, gamedate, team):
       gamestate_tree = game_tree.find('gamestate')
       home = home_tree.get('nickname')
       away = visiting_tree.get('nickname')
-      os.environ['TZ'] = 'US/Eastern'
-      start = int(time.mktime(time.strptime('%s %d' % (gamestate_tree.get('gametime'), yyyymmdd), '%I:%M %p %Y%m%d')))
-      del os.environ['TZ']
+      # Set TZ because results from url are returned in EST
+      tz_est = pytz.timezone('US/Eastern')
+      start = tz_est.localize(datetime.datetime.strptime(yyyymmdd + gamestate_tree.get('gametime'), '%Y%m%d%I:%M %p'))
       if (team == 'ALL'):
         games.append({
           'league': league,
@@ -59,11 +58,11 @@ def today(league, gamedate, team):
         else:
           continue
   except Exception as e:
-    print("DEBUG: " + str(e))
-  print ("DEBUG: " + json.dumps(games))
+    print("ERROR: " + str(e))
+  #print ("DEBUG: " + json.dumps(games))
   return games
 
-def rssfmt (results):
+def rssfmt (results, showtz):
   xml = '''<?xml version="1.0" encoding="UTF-8"?>
   <rss version="2.0">
   <channel>
@@ -75,7 +74,7 @@ def rssfmt (results):
   for game in results:
     xml += f'''
     <item>
-    <title>{game['away']} vs. {game['home']} [ {time.strftime("%I:%M %p %Z", time.localtime(game['start']))}]</title>
+    <title>{game['away']} vs. {game['home']} [ {game['start'].astimezone(tz=showtz).strftime("%I:%M %p %Z")} ]</title>
     <description>{game['status']} | {game['clock']} {game['clock-section']}
     {game['away']} [ {game['away-score']} ] - {game['home']} [ {game['home-score']} ]
     </description>
@@ -88,38 +87,40 @@ def rssfmt (results):
   return xml
 
 def validateinput(event):
+  sport = ""
+  team = ""
+  gamedate = ""
+  showtz = ""
   try:
-    gamedate = int(event['queryStringParameters']['date'])
-    print("DEBUG: Looking for games on " + str(gamedate))
-  except:
-    tzmin8 = datetime.timezone(datetime.timedelta(hours=-8))
-    gamedate = int(datetime.datetime.now(tzmin8).strftime("%Y%m%d"))
-    print("DEBUG: date not received using default date " + str(gamedate))
-  try:
-    team = str(event['queryStringParameters']['team'])
-    print("DEBUG: Looking for team name " + team)
-  except:
-    team = 'ALL'
-    print("DEBUG: team not received looking for all teams")
-  try:
-    if event['queryStringParameters']['sport'] in ['NFL', 'MLB', 'NBA', 'NHL']:
-      sport = str(event['queryStringParameters']['sport'])
+    # Using get method to check if exist or set default value
+    query_string = event.get('queryStringParameters', {})
+    tzoffset = query_string.get('tz', 'US/Eastern')
+    if tzoffset in pytz.all_timezones:
+      showtz = pytz.timezone(tzoffset)
     else:
-      sport = "MLB"  
-  except:
-    sport = "MLB"
-  return (sport, gamedate, team)  
+      showtz = pytz.timezone('US/Eastern')
+    gamedate = str(query_string.get('date', datetime.datetime.now(tz=showtz).strftime("%Y%m%d")))
+    if gamedate == "":
+      gamedate = str(datetime.date.today().strftime("%Y%m%d"))
+    team = str(query_string.get('team', 'ALL'))
+    sport = str(query_string.get('sport', 'MLB'))
+    if sport not in ['NFL', 'MLB', 'NBA', 'NHL']:
+      sport = "MLB" 
+  except Exception as e:
+    print("ERROR: " + str(e))
+    return 0
+  return (sport, gamedate, team, showtz)  
 
 def lambda_handler(event, context):
   print("DEBUG: Received event: " + json.dumps(event, indent=2))
   try:
-    (sport, gamedate, team) = validateinput(event)
+    (sport, gamedate, team, showtz) = validateinput(event)
   except Exception as e:
     print("ERROR: " + str(e))
     api_proxy_response = { "statusCode": 400 }
     return api_proxy_response 
   try:
-    output = rssfmt(today(sport, gamedate, team))
+    output = rssfmt(today(sport, gamedate, team), showtz)
     api_proxy_response = { "statusCode": 200,
                            "isBase64Encoded": "false",
                            "headers": {"Access-Control-Allow-Origin": "*",
@@ -134,9 +135,10 @@ def lambda_handler(event, context):
 
 if __name__ == "__main__":
   testevent = {
-    "queryStringParameters" : {"date"  : "20180424",
+    "queryStringParameters" : {"date"  : "",
                                "team"  : "Giants",
-                               "sport" : "MLB"
+                               "sport" : "MLB",
+                               "tz"    : "US/Pacific"
      }
   }
   testcontext = "test"
