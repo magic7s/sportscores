@@ -24,3 +24,5 @@ cd terraform
 terraform plan
 terrafrom apply
 ```
+
+I'm running this code at https://api.magic7s.com/scores
