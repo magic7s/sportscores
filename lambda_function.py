@@ -94,6 +94,8 @@ def validateinput(event):
   try:
     # Using get method to check if exist or set default value
     query_string = event.get('queryStringParameters', {})
+    if query_string is None:
+      query_string = {}
     tzoffset = query_string.get('tz', 'US/Eastern')
     if tzoffset in pytz.all_timezones:
       showtz = pytz.timezone(tzoffset)
